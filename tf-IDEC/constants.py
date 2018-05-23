@@ -5,6 +5,8 @@ import os
 tol = 1e-3
 # Predefined number of clusters
 k = 10
+# Latent space dimension
+ld = 10
 # Batch size
 Nm = 256
 # Gamma (weight for clustering loss in IDEC)
