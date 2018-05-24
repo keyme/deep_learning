@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data as tf_datasets
 
-from constants import (k, Nm, NUM_CHANNELS, IMAGE_SHAPE,
+from constants import (ld, Nm, NUM_CHANNELS, IMAGE_SHAPE,
                        PRETRAIN_SAVE_EVERY_N_EPOCHS, PRETRAIN_ITERATIONS, AE_LOGDIR)
 from utils import load_mnist, add_train_ops, set_logging_verbosity
 
@@ -71,7 +71,7 @@ def build_autoencoder_graph(placeholders):
     encoder_1 = tf.layers.dense(encoder_0, units=500, activation=tf.nn.relu, name="encoder_1")
     encoder_2 = tf.layers.dense(encoder_1, units=2000, activation=tf.nn.relu, name="encoder_2")
     # As specified in paper, do not apply relu to last encoding layer
-    encoder_3 = tf.layers.dense(encoder_2, units=k, activation=None, name="encoder_3")
+    encoder_3 = tf.layers.dense(encoder_2, units=ld, activation=None, name="encoder_3")
     decoder_3 = tf.layers.dense(encoder_3, units=2000, activation=tf.nn.relu, name="decoder_3")
     decoder_2 = tf.layers.dense(decoder_3, units=500, activation=tf.nn.relu, name="decoder_2")
     decoder_1 = tf.layers.dense(decoder_2, units=500, activation=tf.nn.relu, name="decoder_1")
