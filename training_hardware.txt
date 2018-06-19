@@ -1,0 +1,20 @@
+Creampuff
+SDD:            2TB 850 Evo 2.5" SATA III SSD (x2)
+MOBO:           ASUS RAMPAGE V EDITION 10 LGA 2011-v3 Intel X99 SATA 6Gb/s USB 3.1 USB 3.0 Extended ATX Motherboards - Intel
+CPU:            Intel Core i7-6850K Broadwell E Processor 3.6GHz 15MB LGA 2011-3 CPU w/o Fan
+CPU COOLING:    NZXT Kraken X62 RL-KRX62-01 280mm All-In-One Water / Liquid CPU Cooling With Software Controlled RGB Lighting
+RAM:            CORSAIR Vengeance LED 64GB (4 x 16GB) 288-Pin DDR4 SDRAM (x2)
+GPU:            Nvidia Titan XP (x4)
+PSU:            CORSAIR AXi Series AX1500i Digital 1500W 80 PLUS TITANIUM Haswell Ready Full Modular ATX12V & EPS12V SLI and Crossfire Ready Power Supply with C-Link Monitoring and Control
+CASE:           Corsair Graphite Series CC-9011059-WW White Steel ATX Full Tower 780T Full Tower PC Case ATX Power Supply
+UPS:            Tripp Lite SMART2200VS Smart Pro 2200 VA 1600 Watts Line Interactive Tower UPS
+
+Buttercup
+SDD:            2TB 850 Evo 2.5" SATA III SSD
+MOBO:           ASUS RAMPAGE V EDITION 10 LGA 2011-v3 Intel X99 SATA 6Gb/s USB 3.1 USB 3.0 Extended ATX Motherboards - Intel
+CPU:            Intel Core i7-6850K Broadwell E Processor 3.6GHz 15MB LGA 2011-3 CPU w/o Fan
+CPU COOLING:    NZXT Kraken X62 RL-KRX62-01 280mm All-In-One Water / Liquid CPU Cooling With Software Controlled RGB Lighting
+RAM:            Corsair Vengeance RGB 128GB (8x16GB) DDR4 3600 (PC4-28800) C18 Desktop memory
+GPU:            Nvidia Titan V (x4)
+PSU:            CORSAIR AXi Series AX1500i Digital 1500W 80 PLUS TITANIUM Haswell Ready Full Modular ATX12V & EPS12V SLI and Crossfire Ready Power Supply with C-Link Monitoring and Control
+CASE:           NZXT Phantom 530 Full Tower Computer Case, Glossy White (CA-PH530-W1)
