@@ -37,16 +37,6 @@ def set_logging_verbosity(verbose_level=3):
         datefmt='%m/%d/%Y %I:%M:%S %p',
         level=verbosity[verbose_level])
 
-def compute_batch_iou(predicted_masks, ground_truth_masks):
-    """
-    Compute the the average IoU across a batch of ground truth masks and their
-    respective predicted masks given by the network.
-    """
-
-    return np.mean(
-        [mean_IU(np.squeeze(predicted_masks[i]), np.squeeze(ground_truth_masks[i]))
-         for i in range(len(predicted_masks))])
-
 def compute_batch_pixel_accuracy(predicted_masks, ground_truth_masks):
     """
     Compute the the average pixel accuracy across a batch of ground truth masks
@@ -175,112 +165,6 @@ def build_tfrecords_batch(*paths_to_tfrecords, image_shape, batch_size, max_iter
             num_threads=4, min_after_dequeue=min_after_dequeue)
 
     return image_batch, label_batch
-
-def pixel_accuracy(eval_segm, gt_segm):
-    """Compute pixel-wise accuray: sum_i(n_ii) / sum_i(t_i)"""
-    check_size(eval_segm, gt_segm)
-
-    cl, n_cl = extract_classes(gt_segm)
-    eval_mask, gt_mask = extract_both_masks(eval_segm, gt_segm, cl, n_cl)
-
-    sum_n_ii = 0
-    sum_t_i  = 0
-
-    for i, c in enumerate(cl):
-        curr_eval_mask = eval_mask[i, :, :]
-        curr_gt_mask = gt_mask[i, :, :]
-
-        sum_n_ii += np.sum(np.logical_and(curr_eval_mask, curr_gt_mask))
-        sum_t_i  += np.sum(curr_gt_mask)
-
-    if (sum_t_i == 0):
-        pixel_accuracy_ = 0
-    else:
-        pixel_accuracy_ = sum_n_ii / sum_t_i
-
-    return pixel_accuracy_
-
-def mean_IU(eval_segm, gt_segm):
-    """
-    Compute average IoU of an image:
-    (1/n_cl) * sum_i(n_ii / (t_i + sum_j(n_ji) - n_ii))
-    """
-
-    check_size(eval_segm, gt_segm)
-
-    cl, n_cl   = union_classes(eval_segm, gt_segm)
-    _, n_cl_gt = extract_classes(gt_segm)
-    eval_mask, gt_mask = extract_both_masks(eval_segm, gt_segm, cl, n_cl)
-
-    IU = list([0]) * n_cl
-
-    for i, c in enumerate(cl):
-        curr_eval_mask = eval_mask[i, :, :]
-        curr_gt_mask = gt_mask[i, :, :]
-
-        if (np.sum(curr_eval_mask) == 0) or (np.sum(curr_gt_mask) == 0):
-            continue
-
-        n_ii = np.sum(np.logical_and(curr_eval_mask, curr_gt_mask))
-        t_i  = np.sum(curr_gt_mask)
-        n_ij = np.sum(curr_eval_mask)
-
-        IU[i] = n_ii / (t_i + n_ij - n_ii)
-
-    mean_IU_ = np.sum(IU) / n_cl_gt
-    return mean_IU_
-
-def extract_both_masks(eval_segm, gt_segm, cl, n_cl):
-    """Remap both masks to ascending consecutive integers."""
-    eval_mask = extract_masks(eval_segm, cl, n_cl)
-    gt_mask   = extract_masks(gt_segm, cl, n_cl)
-
-    return eval_mask, gt_mask
-
-def extract_classes(segm):
-    """Extract class info from mask."""
-    cl = np.unique(segm)
-    n_cl = len(cl)
-
-    return cl, n_cl
-
-def union_classes(eval_segm, gt_segm):
-    """Find the union of the two masks."""
-    eval_cl, _ = extract_classes(eval_segm)
-    gt_cl, _   = extract_classes(gt_segm)
-
-    cl = np.union1d(eval_cl, gt_cl)
-    n_cl = len(cl)
-
-    return cl, n_cl
-
-def extract_masks(segm, cl, n_cl):
-    """Remap masks to ascending consecutive integers."""
-    h, w  = segm_size(segm)
-    masks = np.zeros((n_cl, h, w))
-
-    for i, c in enumerate(cl):
-        masks[i, :, :] = segm == c
-
-    return masks
-
-def segm_size(segm):
-        """Color agnostic helper method to check shape."""
-        try:
-            height = segm.shape[0]
-            width  = segm.shape[1]
-        except IndexError:
-            raise
-
-        return height, width
-
-def check_size(eval_segm, gt_segm):
-    """Ensure images have same shape."""
-    h_e, w_e = segm_size(eval_segm)
-    h_g, w_g = segm_size(gt_segm)
-
-    if (h_e != h_g) or (w_e != w_g):
-        raise ValueError("DiffDim: Different dimensions of matrices!")
 
 def add_color(img, num_classes=32):
     """Given a 1-channel color map; convert it to a colored mask."""
