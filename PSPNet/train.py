@@ -1,4 +1,8 @@
-"""."""
+"""
+This script provides code for training PSPNet from scratch.
+
+Paper can be found here: https://arxiv.org/abs/1612.01105.pdf
+"""
 
 import os
 import time
@@ -11,30 +15,28 @@ import tensorflow as tf
 from tqdm import tqdm
 
 from model import PSPNet34
-from utils import (set_logging_verbosity,
-                   build_tfrecords_batch,
-                   compute_batch_iou,
-                   compute_batch_pixel_accuracy)
+from utils import set_logging_verbosity, build_tfrecords_batch
 
 
 MAX_ITERATIONS = int(5e6)
 # Add one to include background/void class in training
 SEMSEG_NUM_CLASSES = 150 + 1
 SEMSEG_SHAPE = (473, 473)
+IGNORE_LABEL = 0
 
 DEFAULT_NETWORK_LOCATION = "./log_dir"
 PATH_TO_RECORDS = "./tfrecords"
-RECORD_PREFIX = "ade20k"
 
 # Tensorflow cmd args
 FLAGS = tf.flags.FLAGS
-tf.flags.DEFINE_integer("batch_size", "32", "batch size for training")
+tf.flags.DEFINE_integer("batch_size", "16", "batch size for training")
 tf.flags.DEFINE_string("logs_dir", DEFAULT_NETWORK_LOCATION, "path to logs directory")
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
 tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize")
-tf.flags.DEFINE_integer('num_samples_per_val', '1000', "Number of samples to consider per validation period")
+tf.flags.DEFINE_integer('num_samples_per_val', '2000', "Number of samples to consider per validation period")
 tf.flags.DEFINE_integer("min_after_dequeue", "100", "How big a buffer we want to sample from data")
 tf.flags.DEFINE_string("path_to_records", PATH_TO_RECORDS, "The path to tfrecords")
+tf.flags.DEFINE_string("records_prefix", "ade20k", "The path to tfrecords")
 
 def main():
     """."""
@@ -67,6 +69,30 @@ def main():
         #loss = utils.semseg_loss(annotation, logits)
         tf.summary.scalar("entropy", loss)
 
+        # Create expression for running mean IoU and pixel accuracy
+        pred_flatten = tf.reshape(net.predict, [-1,])
+        label_flatten = tf.reshape(annotation, [-1,])
+
+        mask = tf.not_equal(label_flatten, IGNORE_LABEL)
+        indices = tf.squeeze(tf.where(mask), 1)
+        gt = tf.cast(tf.gather(label_flatten, indices), tf.int32)
+        pred = tf.gather(pred_flatten, indices)
+
+        mIoU, miou_update_op = tf.metrics.mean_iou(
+            predictions=pred, labels=gt, num_classes=SEMSEG_NUM_CLASSES, name="mIoU")
+        px_acc, px_acc_update_op = tf.metrics.accuracy(predictions=pred, labels=gt, name="px_acc")
+
+        # Group the update ops for both metrics for convenience
+        metrics_update_op = tf.group(miou_update_op, px_acc_update_op)
+
+        # Make an operation to reset running variables for mIoU and pixel accuracy so
+        # we can reset mIoU for each validation
+        running_miou_vars = tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES, scope="mIoU")
+        running_px_acc_vars = tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES, scope="px_acc")
+
+        running_metrics_init = tf.group(tf.variables_initializer(var_list=running_miou_vars),
+                                        tf.variables_initializer(var_list=running_px_acc_vars))
+
         # Create the training operation, summary operation, and session
         trainable_var = tf.trainable_variables()
         train_op = net.add_train_ops(loss, trainable_var, global_step)
@@ -75,8 +101,8 @@ def main():
         summary_op = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(FLAGS.logs_dir, net.sess.graph)
 
-        path_to_train_tfrecord = os.path.join(FLAGS.path_to_records, "{}_train.tfrecords".format(RECORD_PREFIX))
-        path_to_val_tfrecord = os.path.join(FLAGS.path_to_records, "{}_val.tfrecords".format(RECORD_PREFIX))
+        path_to_train_tfrecord = os.path.join(FLAGS.path_to_records, "{}_train.tfrecords".format(FLAGS.records_prefix))
+        path_to_val_tfrecord = os.path.join(FLAGS.path_to_records, "{}_val.tfrecords".format(FLAGS.records_prefix))
 
         image_batch, label_batch = build_tfrecords_batch(
             path_to_train_tfrecord,
@@ -123,33 +149,48 @@ def main():
 
                 if itr % 500 == 0 and itr > 0:
                     num_batches_per_epoch = (FLAGS.num_samples_per_val // FLAGS.batch_size) + 1
-                    val_losses, val_ious, val_px_accs = [], [], []
+                    val_losses = []
+
+                    # Reset mIoU and pixel accuracy running vars so we get a fresh evaluation
+                    # for each validation
+                    net.sess.run(running_metrics_init)
+
                     for i in range(num_batches_per_epoch):
 
                         val_images, val_annotations = net.sess.run([valid_image_batch, valid_label_batch])
-                        val_feed_dict = {image: val_images, annotation: val_annotations, keep_prob: 1.0, is_training: False}
+                        val_feed_dict = {image: val_images,
+                                         annotation: val_annotations,
+                                         keep_prob: 1.0, is_training: False}
 
-                        val_loss, val_predict = net.sess.run([loss, net.predict], feed_dict=val_feed_dict)
+                        val_loss, _ = net.sess.run([loss, metrics_update_op], feed_dict=val_feed_dict)
                         val_losses.append(val_loss)
 
-                        val_iou = compute_batch_iou(val_predict, val_annotations)
-                        val_ious.append(val_iou)
-
-                        val_px_acc = compute_batch_pixel_accuracy(val_predict, val_annotations)
-                        val_px_accs.append(val_px_acc)
-
-                    avg_val_loss, avg_val_iou, avg_val_px_acc = np.mean(val_losses), np.mean(val_ious), np.mean(val_px_accs)
-                    logging.info("{} ---> Validation_loss: {} (best: {}), Validation_IoU: {} (best: {}), Validation pixel accuracy: {} (best: {})".format(
-                                    datetime.datetime.now(), avg_val_loss, best_loss.eval(session=net.sess), avg_val_iou, best_iou.eval(session=net.sess), avg_val_px_acc, best_px_acc.eval(session=net.sess)))
-
+                    avg_val_loss = np.mean(val_losses)
                     best_loss_val = net.sess.run(best_loss)
+
+                    # Get current and best mean IoUs and pixel accuracies
+                    val_iou, best_iou_val = net.sess.run([mIoU, best_iou])
+                    val_px_acc, best_px_acc_val = net.sess.run([px_acc, best_px_acc])
+
+                    logging.info(
+                        "{} ---> Validation_loss: {} (best: {}), Validation_IoU: {} (best: {}), "
+                        "Validation pixel accuracy: {} (best: {})".format(
+                                    datetime.datetime.now(),
+                                    avg_val_loss, best_loss_val,
+                                    val_iou, best_iou_val,
+                                    val_px_acc, best_px_acc_val))
 
                     if avg_val_loss < best_loss_val:
                         net.sess.run(best_loss.assign(avg_val_loss))
-                        net.sess.run(best_iou.assign(avg_val_iou))
-                        net.sess.run(best_px_acc.assign(avg_val_px_acc))
-                        logging.info("New best loss: {} with iou: {} and px acc: {} at step {}".format(avg_val_loss, avg_val_iou, avg_val_px_acc, itr))
-                        net.saver.save(net.sess, os.path.join(FLAGS.logs_dir, "best_model.ckpt"), global_step=itr)
+                        net.sess.run(best_iou.assign(val_iou))
+                        net.sess.run(best_px_acc.assign(val_px_acc))
+                        logging.info(
+                            "New best loss: {} with iou: {} and px acc: {} at step {}".format(
+                                avg_val_loss, val_iou, val_px_acc, itr))
+
+                        net.saver.save(
+                            net.sess, os.path.join(FLAGS.logs_dir, "best_model.ckpt"),
+                            global_step=itr)
 
                 if itr >= MAX_ITERATIONS:
                     break
