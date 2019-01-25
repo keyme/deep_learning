@@ -62,6 +62,7 @@ def main():
         global_step = tf.Variable(0, name='global_step', trainable=False)
         best_loss = tf.Variable(1e7, name='best_loss', trainable=False, dtype=tf.float32)
         best_iou = tf.Variable(0, name='best_iou', trainable=False, dtype=tf.float32)
+        best_px_acc = tf.Variable(0, name='best_px_acc', trainable=False, dtype=tf.float32)
 
         # Get shortcuts to all placeholders as well as the computation graph
         image = net.placeholders["image"]
@@ -92,13 +93,20 @@ def main():
         gt = tf.cast(tf.gather(label_flatten, indices), tf.int32)
         pred = tf.gather(pred_flatten, indices)
 
-        mIoU, update_op = tf.metrics.mean_iou(
+        mIoU, miou_update_op = tf.metrics.mean_iou(
             predictions=pred, labels=gt, num_classes=SEMSEG_NUM_CLASSES, name="mIoU")
+        px_acc, px_acc_update_op = tf.metrics.accuracy(predictions=pred, labels=gt, name="px_acc")
 
-        # Make an operation to reset running variables for mIoU so we can reset
-        # mIoU for each validation
+        # Group the update ops for both metrics for convenience
+        metrics_update_op = tf.group(miou_update_op, px_acc_update_op)
+
+        # Make an operation to reset running variables for mIoU and pixel accuracy so
+        # we can reset mIoU for each validation
         running_miou_vars = tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES, scope="mIoU")
-        running_miou_vars_init = tf.variables_initializer(var_list=running_miou_vars)
+        running_px_acc_vars = tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES, scope="px_acc")
+
+        running_metrics_init = tf.group(tf.variables_initializer(var_list=running_miou_vars),
+                                        tf.variables_initializer(var_list=running_px_acc_vars))
 
         # Create the training and summary operations
         trainable_var = tf.trainable_variables()
@@ -159,7 +167,7 @@ def main():
                     val_losses = []
 
                     # Reset mIoU running vars so we get a fresh evaluation for each validation
-                    net.sess.run(running_miou_vars_init)
+                    net.sess.run(running_metrics_init)
 
                     for i in range(num_batches_per_epoch):
 
@@ -167,26 +175,33 @@ def main():
                         val_feed_dict = {image: val_images, annotation: val_annotations,
                                          keep_prob: 1.0, is_training: False}
 
-                        val_loss, _ = net.sess.run([loss, update_op], feed_dict=val_feed_dict)
+                        val_loss, _ = net.sess.run([loss, metrics_update_op], feed_dict=val_feed_dict)
                         val_losses.append(val_loss)
 
                     avg_val_loss = np.mean(val_losses)
-                    val_iou = net.sess.run(mIoU)
-
                     best_loss_val = net.sess.run(best_loss)
-                    best_iou_val = net.sess.run(best_iou)
+
+                    # Get current and best mean IoUs and pixel accuracies
+                    val_iou, best_iou_val = net.sess.run([mIoU, best_iou])
+                    val_px_acc, best_px_acc_val = net.sess.run([px_acc, best_px_acc])
 
                     logging.info(
-                        "{} ---> Validation; loss: {} (best: {}), "
-                        "mIoU: {} (best: {})".format(
-                            datetime.datetime.now(), avg_val_loss, best_loss_val,
-                            val_iou, best_iou_val))
+                        "{} ---> Validation_loss: {} (best: {}), Validation_IoU: {} (best: {}), "
+                        "Validation pixel accuracy: {} (best: {})".format(
+                                    datetime.datetime.now(),
+                                    avg_val_loss, best_loss_val,
+                                    val_iou, best_iou_val,
+                                    val_px_acc, best_px_acc_val))
 
                     # If this is the best we've done on validation, update checkpoint
                     if avg_val_loss < best_loss_val:
                         net.sess.run(best_loss.assign(avg_val_loss))
                         net.sess.run(best_iou.assign(val_iou))
-                        logging.info("New best loss: {} at step {}".format(avg_val_loss, itr))
+                        net.sess.run(best_px_acc.assign(val_px_acc))
+                        logging.info(
+                            "New best loss: {} with iou: {} and px acc: {} at step {}".format(
+                                avg_val_loss, val_iou, val_px_acc, itr))
+
                         net.saver.save(net.sess,
                                        os.path.join(FLAGS.logs_dir, "best_model.ckpt"),
                                        global_step=itr)

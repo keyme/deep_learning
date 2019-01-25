@@ -49,7 +49,7 @@ def main():
         global_step = tf.Variable(0, name='global_step', trainable=False)
         best_loss = tf.Variable(1e7, name='best_loss', trainable=False, dtype=tf.float32)
         best_iou = tf.Variable(0, name='best_iou', trainable=False, dtype=tf.float32)
-        best_px_acc = tf.Variable(0, name='best_iou', trainable=False, dtype=tf.float32)
+        best_px_acc = tf.Variable(0, name='best_px_acc', trainable=False, dtype=tf.float32)
 
         # Get shortcuts to all placeholders as well as the computation graph
         image = net.placeholders["image"]
